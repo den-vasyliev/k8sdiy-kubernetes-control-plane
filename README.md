@@ -1,7 +1,7 @@
 # k8s-diy-dev
 
 <div align="center">
-  <img src="docs/images/logo.png" alt="k8s-diy-dev logo" width="200"/>
+  <img src="docs/images/logo.png" alt="k8s-diy-dev logo" width="400"/>
   <p><em>Build your own Kubernetes development environment from scratch</em></p>
 </div>
 
