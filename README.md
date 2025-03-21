@@ -1,76 +1,114 @@
 # k8s-diy-dev
 
-## Overview
-This project is designed to help you get started with Kubernetes dev environment by providing step-by-step instructions.
+<div align="center">
+  <img src="docs/images/logo.png" alt="k8s-diy-dev logo" width="200"/>
+  <p><em>Build your own Kubernetes development environment from scratch</em></p>
+</div>
 
-#### Inspired by https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.3/pkg/envtest
+## Overview
+This project helps you understand Kubernetes internals by providing step-by-step instructions to build a development environment from scratch. It's perfect for developers who want to:
+- Learn how Kubernetes components work together
+- Set up a local development environment
+- Understand the inner workings of kubelet, kube-apiserver, and other components
+- Experiment with Kubernetes without using minikube or kind
+
+#### Inspired by [controller-runtime's envtest](https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.3/pkg/envtest)
+
+## Features
+- Complete local Kubernetes development environment
+- Step-by-step component setup
+- Support for both ARM64 and AMD64 architectures
+- Built-in debugging and troubleshooting tools
+- Customizable configuration options
+
+## Prerequisites
+- Mac with Apple Silicon (M1/M2) or Intel processor
+- Podman installed (for Mac users)
+- Basic understanding of Kubernetes concepts
+- Terminal with sudo privileges
 
 ## Getting Started
-This section will guide you through the basics of setting up and running the project on a Mac with Apple ARM.
 
-## Installation
-To install and set up the project, follow these steps:
+### 1. Initial Setup
 
-Mac users:
-```
-podman machine init dev                                                                                 
+#### For Mac Users:
+```bash
+# Initialize and start Podman machine
+podman machine init dev
 podman machine start dev
 podman machine ssh dev
+
+# Install basic tools
 sudo rpm-ostree install dnf zsh wget vim
 ```
-linux:
-```
+
+#### For Linux Users:
+```bash
 sudo apt install zsh git
 ```
-ohmyzsh to make work simplier
-```
+
+### 2. Development Environment Setup
+
+#### Install Oh My Zsh for better terminal experience:
+```bash
 sh -c "$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
 ```
-Install K9S to manage the cluster
-```
+
+#### Install K9S for cluster management:
+```bash
 curl -sS https://webi.sh/k9s | sh
 ```
 
-### Install kubebuilder-tools
-```
+### 3. Kubernetes Components Setup
+
+#### Install kubebuilder-tools:
+```bash
 mkdir -p ./kubebuilder/bin && \
     curl -L https://storage.googleapis.com/kubebuilder-tools/kubebuilder-tools-1.30.0-linux-amd64.tar.gz -o kubebuilder-tools.tar.gz && \
     tar -C ./kubebuilder --strip-components=1 -zvxf kubebuilder-tools.tar.gz && \
     rm kubebuilder-tools.tar.gz
 ```
 
-### Download arm64/amd64 kubelet
-```
+#### Download kubelet:
+```bash
 echo "Downloading kubelet..."
-#curl -L "https://dl.k8s.io/v1.30.0/bin/linux/amd64/kubelet" -o kubebuilder/bin/kubelet
-curl -L "https://dl.k8s.io/v1.30.0/bin/linux/arm64/kubelet" -o kubebuilder/bin/kubelet 
+# For AMD64:
+# curl -L "https://dl.k8s.io/v1.30.0/bin/linux/amd64/kubelet" -o kubebuilder/bin/kubelet
+# For ARM64:
+curl -L "https://dl.k8s.io/v1.30.0/bin/linux/arm64/kubelet" -o kubebuilder/bin/kubelet
 ```
 
-### Generating service account key pair
-```
+#### Generate service account key pair:
+```bash
 echo "Generating service account key pair..." && \
 openssl genrsa -out /tmp/sa.key 2048 && \
 openssl rsa -in /tmp/sa.key -pubout -out /tmp/sa.pub
 ```
-### Generating token
-```
+
+#### Generate token:
+```bash
 echo "Generating token file..." && \
     TOKEN="1234567890" && \
     echo "${TOKEN},admin,admin,system:masters" > /tmp/token.csv
 ```
-### Set up kubeconfig
-```
+
+#### Set up kubeconfig:
+```bash
 sudo kubebuilder/bin/kubectl config set-credentials test-user --token=1234567890
 sudo kubebuilder/bin/kubectl config set-cluster test-env --server=https://127.0.0.1:6443 --insecure-skip-tls-verify
 sudo kubebuilder/bin/kubectl config set-context test-context --cluster=test-env --user=test-user --namespace=default 
 sudo kubebuilder/bin/kubectl config use-context test-context
 ```
-### Get the container's IP address
-```
+
+### 4. Start Core Components
+
+#### Get the container's IP address:
+```bash
 HOST_IP=$(hostname -I | awk '{print $1}')
 ```
-### Start etcd
-```
+
+#### Start etcd:
+```bash
 echo "Starting etcd..."
 kubebuilder/bin/etcd \
     --advertise-client-urls http://$HOST_IP:2379 \
@@ -82,11 +120,14 @@ kubebuilder/bin/etcd \
     --initial-cluster-state new \
     --initial-cluster-token test-token &
 ```
-### Wait for etcd to be ready
-```
-curl http://127.0.0.1:2379/health
 
-# Start kube-apiserver
+#### Verify etcd health:
+```bash
+curl http://127.0.0.1:2379/health
+```
+
+#### Start kube-apiserver:
+```bash
 echo "Starting kube-apiserver..."
 sudo kubebuilder/bin/kube-apiserver \
     --etcd-servers=http://$HOST_IP:2379 \
@@ -104,43 +145,42 @@ sudo kubebuilder/bin/kube-apiserver \
     --v=0 \
     --service-account-issuer=https://kubernetes.default.svc.cluster.local \
     --service-account-key-file=/tmp/sa.pub \
-    --service-account-signing-key-file=/tmp/sa.key&
+    --service-account-signing-key-file=/tmp/sa.key &
 ```
-### Wait for API server to be ready
-```
+
+#### Verify API server health:
+```bash
 kubebuilder/bin/kubectl get --raw='/readyz'
 ```
-### Install containerd
-#### https://github.com/containerd/containerd/blob/main/docs/getting-started.md
-```
+
+### 5. Container Runtime Setup
+
+#### Install containerd:
+```bash
 echo "Installing containerd..."
 sudo mkdir -p /opt/cni/bin
 sudo mkdir -p /etc/cni/net.d
-```
-```
-#wget https://github.com/containerd/containerd/releases/download/v2.1.0-beta.0/containerd-2.1.0-beta.0-linux-amd64.tar.gz
+
+# For ARM64:
 wget https://github.com/containerd/containerd/releases/download/v2.1.0-beta.0/containerd-2.1.0-beta.0-linux-arm64.tar.gz
-```
-```
+
+# Download runc
 sudo curl -L "https://github.com/opencontainers/runc/releases/download/v1.2.6/runc.amd64" -o /opt/cni/bin/runc
-```
-```
-#wget https://github.com/containernetworking/plugins/releases/download/v1.6.2/cni-plugins-linux-amd64-v1.6.2.tgz
+
+# Download CNI plugins
 wget https://github.com/containernetworking/plugins/releases/download/v1.6.2/cni-plugins-linux-arm-v1.6.2.tgz
-```
-```
-curl -L "https://dl.k8s.io/v1.30.0/bin/linux/amd64/kube-controller-manager" -o kubebuilder/bin/kube-controller-manager
+
+# Download kube-controller-manager and kube-scheduler
 curl -L "https://dl.k8s.io/v1.30.0/bin/linux/arm64/kube-controller-manager" -o kubebuilder/bin/kube-controller-manager
-```
-```
-curl -L "https://dl.k8s.io/v1.30.0/bin/linux/amd64/kube-scheduler" -o kubebuilder/bin/kube-scheduler
-```
-```
-sudo tar zxf containerd-2.1.0-beta.0-linux-amd64.tar.gz -C /opt/cni/
+curl -L "https://dl.k8s.io/v1.30.0/bin/linux/arm64/kube-scheduler" -o kubebuilder/bin/kube-scheduler
+
+# Extract and install components
 sudo tar zxf containerd-2.1.0-beta.0-linux-arm64.tar.gz -C /opt/cni/
-sudo tar zxf cni-plugins-linux-amd64-v1.6.2.tgz -C /opt/cni/bin/
+sudo tar zxf cni-plugins-linux-arm-v1.6.2.tgz -C /opt/cni/bin/
 ```
-```
+
+#### Configure CNI:
+```bash
 cat <<EOF > 10-mynet.conf
 {
     "cniVersion": "0.3.1",
@@ -161,13 +201,17 @@ EOF
 
 sudo mv 10-mynet.conf /etc/cni/net.d/10-mynet.conf
 ```
-```
+
+#### Set permissions:
+```bash
 sudo chmod +x /opt/cni/bin/runc
 sudo chmod +x kubebuilder/bin/kube-controller-manager
 sudo chmod +x kubebuilder/bin/kubelet 
 sudo chmod +x kubebuilder/bin/kube-scheduler
 ```
-```
+
+#### Configure containerd:
+```bash
 sudo mkdir -p /etc/containerd/
 cat <<EOF > config.toml
 version = 2
@@ -184,15 +228,18 @@ EOF
 sudo mv config.toml /etc/containerd/config.toml
 ```
 
-### Start containerd
-```
+### 6. Start Remaining Components
+
+#### Start containerd:
+```bash
 export PATH=$PATH:/opt/cni/bin:kubebuilder/bin
 echo "Starting containerd..."
 sudo export PATH=$PATH:/opt/cni/bin
-sudo PATH=$PATH:/opt/cni/bin /opt/cni/bin/containerd -c /etc/containerd/config.toml&
+sudo PATH=$PATH:/opt/cni/bin /opt/cni/bin/containerd -c /etc/containerd/config.toml &
 ```
-### Start kube-scheduler
-```
+
+#### Start kube-scheduler:
+```bash
 echo "Starting kube-scheduler..."
 sudo kubebuilder/bin/kube-scheduler \
     --kubeconfig=/var/lib/kubelet/kubeconfig \
@@ -200,21 +247,25 @@ sudo kubebuilder/bin/kube-scheduler \
     --v=2 \
     --bind-address=0.0.0.0 &
 ```
-### Create necessary directories for kubelet
-```
+
+#### Create kubelet directories:
+```bash
 echo "Creating kubelet directories..."
 sudo mkdir -p /var/lib/kubelet
 sudo mkdir -p /etc/kubernetes/manifests
 sudo mkdir -p /var/log/kubernetes
 ```
-### Generate CA certificate for kubelet
-```
+
+#### Generate CA certificate:
+```bash
 echo "Generating CA certificate for kubelet..."
 openssl genrsa -out /tmp/ca.key 2048
 openssl req -x509 -new -nodes -key /tmp/ca.key -subj "/CN=kubelet-ca" -days 365 -out /tmp/ca.crt
 sudo cp /tmp/ca.crt /var/lib/kubelet/ca.crt
 ```
-```
+
+#### Configure kubelet:
+```bash
 cat << EOF | sudo tee /var/lib/kubelet/config.yaml
 apiVersion: kubelet.config.k8s.io/v1beta1
 kind: KubeletConfiguration
@@ -239,19 +290,22 @@ containerRuntimeEndpoint: "unix:///run/containerd/containerd.sock"
 staticPodPath: "/etc/kubernetes/manifests"
 EOF
 ```
-### Create kubelet kubeconfig
-```
+
+#### Set up kubelet kubeconfig:
+```bash
 sudo cp ~/.kube/config /var/lib/kubelet/kubeconfig
 export KUBECONFIG=~/.kube/config
 cp /tmp/sa.pub /tmp/ca.crt
 ```
-### Create sa and ca configmap
-```
+
+#### Create service account and configmap:
+```bash
 sudo kubebuilder/bin/kubectl create sa default
 sudo kubebuilder/bin/kubectl create configmap kube-root-ca.crt --from-file=ca.crt=/tmp/ca.crt -n default
 ```
-### Start kubelet
-```
+
+#### Start kubelet:
+```bash
 echo "Starting kubelet..."
 sudo PATH=$PATH:/opt/cni/bin:/usr/sbin kubebuilder/bin/kubelet \
     --kubeconfig=/var/lib/kubelet/kubeconfig \
@@ -265,13 +319,15 @@ sudo PATH=$PATH:/opt/cni/bin:/usr/sbin kubebuilder/bin/kubelet \
     --max-pods=4  \
     --v=1 &
 ```
-### Wait for kubelet to be ready
-```
+
+#### Verify kubelet status:
+```bash
 kubebuilder/bin/kubectl get nodes 
 kubebuilder/bin/kubectl get all -A
 ```
-### Start kube-controller-manager
-```
+
+#### Start kube-controller-manager:
+```bash
 echo "Starting kube-controller-manager..."
 sudo kubebuilder/bin/kube-controller-manager \
     --kubeconfig=/var/lib/kubelet/kubeconfig \
@@ -285,13 +341,17 @@ sudo kubebuilder/bin/kube-controller-manager \
     --use-service-account-credentials=true \
     --v=2 &
 ```
-### Show component statuses
-```
+
+#### Check component statuses:
+```bash
 kubebuilder/bin/kubectl get componentstatuses
 ```
-### Create a pod
-```
-k apply -f -<<EOF
+
+### 7. Test the Setup
+
+#### Create a test pod:
+```bash
+kubectl apply -f -<<EOF
 apiVersion: v1
 kind: Pod
 metadata:
@@ -304,8 +364,47 @@ spec:
         privileged: true
 EOF
 ```
-### Exec into the pod
-```
+
+#### Access the pod:
+```bash
 sudo /opt/cni/bin/ctr -n k8s.io c ls
 sudo /opt/cni/bin/ctr -n k8s.io tasks exec -t --exec-id m 543350944cf0bec0ca8d10873d5b9d258ce155c2b3d5c334cf1fc711580dd2d2 sh
 ```
+
+## Architecture
+The project sets up the following Kubernetes components:
+- etcd: Key-value store for cluster data
+- kube-apiserver: Kubernetes API server
+- kube-controller-manager: Controller manager
+- kube-scheduler: Pod scheduler
+- kubelet: Node agent
+- containerd: Container runtime
+
+## Troubleshooting
+Common issues and their solutions:
+
+1. **etcd Connection Issues**
+   - Check if etcd is running: `curl http://127.0.0.1:2379/health`
+   - Verify network connectivity
+   - Check logs: `journalctl -u etcd`
+
+2. **kubelet Problems**
+   - Check kubelet status: `systemctl status kubelet`
+   - View logs: `journalctl -u kubelet`
+   - Verify containerd is running: `systemctl status containerd`
+
+3. **API Server Issues**
+   - Check API server health: `kubectl get --raw='/readyz'`
+   - Verify certificates and tokens
+   - Check logs: `journalctl -u kube-apiserver`
+
+## Contributing
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+- Kubernetes community for their excellent documentation
+- controller-runtime team for inspiration
+- All contributors who have helped improve this project
