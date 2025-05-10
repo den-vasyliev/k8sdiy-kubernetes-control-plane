@@ -1,4 +1,4 @@
-# k8s-diy-dev
+# kubernetes-control-plane
 
 <div align="center">
   <img src="docs/images/logo.png" alt="k8s-diy-dev logo" width="400"/>
