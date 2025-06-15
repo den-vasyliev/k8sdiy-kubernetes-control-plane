@@ -397,6 +397,37 @@ The project sets up the following Kubernetes components:
 - kubelet: Node agent
 - containerd: Container runtime
 
+## Embedded Kubernetes Controllers
+
+Kubernetes includes several built-in controllers that are essential for cluster operation. These controllers are part of the core control plane and are typically managed by the kube-controller-manager.
+
+**Core Embedded Controllers:**
+
+- **ReplicationController**: Ensures the specified number of pod replicas are running.
+- **Deployment Controller**: Manages Deployments (via ReplicaSets).
+- **ReplicaSet Controller**: Ensures the specified number of pod replicas for ReplicaSets.
+- **StatefulSet Controller**: Manages StatefulSets for stateful applications.
+- **DaemonSet Controller**: Ensures a copy of a pod runs on all (or some) nodes.
+- **Job Controller**: Manages Jobs for batch/finite tasks.
+- **CronJob Controller**: Manages CronJobs for scheduled tasks.
+- **Namespace Controller**: Handles namespace lifecycle.
+- **ServiceAccount Controller**: Manages ServiceAccount objects and secrets.
+- **Node Controller**: Monitors node health and handles node lifecycle.
+- **Endpoints Controller**: Populates Endpoints objects for Services.
+- **Service Controller**: Manages Service objects and cloud load balancers.
+- **ResourceQuota Controller**: Enforces resource quotas in namespaces.
+- **HorizontalPodAutoscaler Controller**: Scales pods based on metrics.
+- **PersistentVolume Controller**: Manages PersistentVolumes and claims.
+- **PersistentVolumeClaim Controller**: Binds PersistentVolumeClaims to PersistentVolumes.
+- **Garbage Collector Controller**: Cleans up dependent objects.
+- **Token Controller**: Manages service account tokens.
+- **CertificateSigningRequest Controller**: Handles certificate requests.
+- **TTL Controller**: Cleans up finished Jobs and Pods after a TTL.
+
+Other core components:
+- **kube-scheduler**: Schedules pods to nodes (not a controller, but a core control plane component).
+- **cloud-controller-manager**: (Optional, for cloud providers) Manages cloud-specific controllers (e.g., for load balancers, nodes, routes).
+
 ## Troubleshooting
 Common issues and their solutions:
 
