@@ -434,6 +434,11 @@ Other core components:
 For the official list of controller names used by kube-controller-manager, see the Kubernetes source code:
 [https://github.com/kubernetes/kubernetes/blob/master/cmd/kube-controller-manager/names/controller_names.go](https://github.com/kubernetes/kubernetes/blob/master/cmd/kube-controller-manager/names/controller_names.go)
 
+**Controller Source Code Reference:**
+
+To explore the implementation of all built-in controllers, see the Kubernetes source code directory:
+[https://github.com/kubernetes/kubernetes/tree/master/pkg/controller](https://github.com/kubernetes/kubernetes/tree/master/pkg/controller)
+
 ## Troubleshooting
 Common issues and their solutions:
 
