@@ -44,7 +44,7 @@ sudo rpm-ostree install dnf zsh wget vim
 
 #### For Linux Users:
 ```bash
-sudo apt install zsh git
+sudo apt install zsh git make
 ```
 
 ### 2. Development Environment Setup
@@ -150,7 +150,7 @@ sudo kubebuilder/bin/kube-apiserver \
 
 #### Verify API server health:
 ```bash
-kubebuilder/bin/kubectl get --raw='/readyz'
+sudo kubebuilder/bin/kubectl get --raw='/readyz'
 ```
 
 ### 5. Container Runtime Setup
@@ -250,7 +250,7 @@ sudo mv config.toml /etc/containerd/config.toml
 ```bash
 export PATH=$PATH:/opt/cni/bin:kubebuilder/bin
 echo "Starting containerd..."
-sudo PATH=$PATH:/opt/cni/bin /opt/cni/bin/containerd -c /etc/containerd/config.toml &
+sudo PATH=$PATH:/opt/cni/bin:/usr/sbin /opt/cni/bin/containerd -c /etc/containerd/config.toml &
 ```
 
 #### Start kube-scheduler:
@@ -322,7 +322,7 @@ sudo kubebuilder/bin/kubectl create configmap kube-root-ca.crt --from-file=ca.cr
 #### Start kubelet:
 ```bash
 echo "Starting kubelet..."
-sudo PATH=$PATH:/opt/cni/bin:/usr/sbin kubebuilder/bin/kubelet \
+sudo PATH=$PATH:/opt/cni/bin:/usr/sbin kubebuilder/bin/kubelet \ 
     --kubeconfig=/var/lib/kubelet/kubeconfig \
     --config=/var/lib/kubelet/config.yaml \
     --root-dir=/var/lib/kubelet \
@@ -344,7 +344,7 @@ sudo kubebuilder/bin/kubectl get all -A
 #### Start kube-controller-manager:
 ```bash
 echo "Starting kube-controller-manager..."
-sudo kubebuilder/bin/kube-controller-manager \
+sudo PATH=$PATH:/opt/cni/bin:/usr/sbin kubebuilder/bin/kube-controller-manager \
     --kubeconfig=/var/lib/kubelet/kubeconfig \
     --leader-elect=false \
     --allocate-node-cidrs=true \
@@ -361,14 +361,14 @@ sudo kubebuilder/bin/kube-controller-manager \
 #### https://kubernetes.io/docs/reference/using-api/health-checks/
 ```bash
 sudo kubebuilder/bin/kubectl get componentstatuses
-kubectl get --raw='/readyz?verbose'
+sudo kubebuilder/bin/kubectl get --raw='/readyz?verbose'
 ```
 
 ### 7. Test the Setup
 
 #### Create a test pod:
 ```bash
-kubectl apply -f -<<EOF
+sudo PATH=$PATH:/usr/sbin kubebuilder/bin/kubectl apply -f -<<EOF
 apiVersion: v1
 kind: Pod
 metadata:
