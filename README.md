@@ -72,10 +72,10 @@ mkdir -p ./kubebuilder/bin && \
 #### Download kubelet:
 ```bash
 echo "Downloading kubelet..."
-# For AMD64:
-# curl -L "https://dl.k8s.io/v1.30.0/bin/linux/amd64/kubelet" -o kubebuilder/bin/kubelet
 # For ARM64:
 curl -L "https://dl.k8s.io/v1.30.0/bin/linux/arm64/kubelet" -o kubebuilder/bin/kubelet
+# For AMD64:
+curl -L "https://dl.k8s.io/v1.30.0/bin/linux/amd64/kubelet" -o kubebuilder/bin/kubelet
 ```
 
 #### Generate service account key pair:
@@ -162,21 +162,37 @@ sudo mkdir -p /opt/cni/bin
 sudo mkdir -p /etc/cni/net.d
 
 # For ARM64:
-wget https://github.com/containerd/containerd/releases/download/v2.1.0-beta.0/containerd-2.1.0-beta.0-linux-arm64.tar.gz
+wget https://github.com/containerd/containerd/releases/download/v2.1.2/containerd-static-2.1.2-linux-arm64.tar.gz
 
-# Download runc
+# For AMD64:
+wget https://github.com/containerd/containerd/releases/download/v2.1.2/containerd-static-2.1.2-linux-amd64.tar.gz
+
+# Download AMD runc
 sudo curl -L "https://github.com/opencontainers/runc/releases/download/v1.2.6/runc.amd64" -o /opt/cni/bin/runc
 
-# Download CNI plugins
+# Download ARM CNI plugins
 wget https://github.com/containernetworking/plugins/releases/download/v1.6.2/cni-plugins-linux-arm-v1.6.2.tgz
 
-# Download kube-controller-manager and kube-scheduler
+# Download AMD CNI plugins
+wget https://github.com/containernetworking/plugins/releases/download/v1.6.2/cni-plugins-linux-amd64-v1.6.2.tgz
+
+
+# Download ARM kube-controller-manager and kube-scheduler
 curl -L "https://dl.k8s.io/v1.30.0/bin/linux/arm64/kube-controller-manager" -o kubebuilder/bin/kube-controller-manager
 curl -L "https://dl.k8s.io/v1.30.0/bin/linux/arm64/kube-scheduler" -o kubebuilder/bin/kube-scheduler
 
+# Download AMD kube-controller-manager and kube-scheduler
+curl -L "https://dl.k8s.io/v1.30.0/bin/linux/amd64/kube-controller-manager" -o kubebuilder/bin/kube-controller-manager
+curl -L "https://dl.k8s.io/v1.30.0/bin/linux/amd64/kube-scheduler" -o kubebuilder/bin/kube-scheduler
+
 # Extract and install components
-sudo tar zxf containerd-2.1.0-beta.0-linux-arm64.tar.gz -C /opt/cni/
+# ARM
+sudo tar zxf containerd-static-2.1.2-linux-arm.tar.gz -C /opt/cni/ 
 sudo tar zxf cni-plugins-linux-arm-v1.6.2.tgz -C /opt/cni/bin/
+# AMD plugins
+sudo tar zxf containerd-static-2.1.2-linux-amd64.tar.gz -C /opt/cni/ 
+sudo tar zxf cni-plugins-linux-amd64-v1.6.2.tgz -C /opt/cni/bin/
+
 ```
 
 #### Configure CNI:
@@ -234,7 +250,6 @@ sudo mv config.toml /etc/containerd/config.toml
 ```bash
 export PATH=$PATH:/opt/cni/bin:kubebuilder/bin
 echo "Starting containerd..."
-sudo export PATH=$PATH:/opt/cni/bin
 sudo PATH=$PATH:/opt/cni/bin /opt/cni/bin/containerd -c /etc/containerd/config.toml &
 ```
 
@@ -242,7 +257,7 @@ sudo PATH=$PATH:/opt/cni/bin /opt/cni/bin/containerd -c /etc/containerd/config.t
 ```bash
 echo "Starting kube-scheduler..."
 sudo kubebuilder/bin/kube-scheduler \
-    --kubeconfig=/var/lib/kubelet/kubeconfig \
+    --kubeconfig=/root/.kube/config \
     --leader-elect=false \
     --v=2 \
     --bind-address=0.0.0.0 &
@@ -293,7 +308,7 @@ EOF
 
 #### Set up kubelet kubeconfig:
 ```bash
-sudo cp ~/.kube/config /var/lib/kubelet/kubeconfig
+sudo cp /root/.kube/config /var/lib/kubelet/kubeconfig
 export KUBECONFIG=~/.kube/config
 cp /tmp/sa.pub /tmp/ca.crt
 ```
@@ -322,8 +337,8 @@ sudo PATH=$PATH:/opt/cni/bin:/usr/sbin kubebuilder/bin/kubelet \
 
 #### Verify kubelet status:
 ```bash
-kubebuilder/bin/kubectl get nodes 
-kubebuilder/bin/kubectl get all -A
+sudo kubebuilder/bin/kubectl get nodes 
+sudo kubebuilder/bin/kubectl get all -A
 ```
 
 #### Start kube-controller-manager:
@@ -343,8 +358,10 @@ sudo kubebuilder/bin/kube-controller-manager \
 ```
 
 #### Check component statuses:
+#### https://kubernetes.io/docs/reference/using-api/health-checks/
 ```bash
-kubebuilder/bin/kubectl get componentstatuses
+sudo kubebuilder/bin/kubectl get componentstatuses
+kubectl get --raw='/readyz?verbose'
 ```
 
 ### 7. Test the Setup
