@@ -403,6 +403,7 @@ Kubernetes includes several built-in controllers that are essential for cluster 
 
 **Core Embedded Controllers:**
 
+
 - **ReplicationController**: Ensures the specified number of pod replicas are running.
 - **Deployment Controller**: Manages Deployments (via ReplicaSets).
 - **ReplicaSet Controller**: Ensures the specified number of pod replicas for ReplicaSets.
@@ -427,6 +428,11 @@ Kubernetes includes several built-in controllers that are essential for cluster 
 Other core components:
 - **kube-scheduler**: Schedules pods to nodes (not a controller, but a core control plane component).
 - **cloud-controller-manager**: (Optional, for cloud providers) Manages cloud-specific controllers (e.g., for load balancers, nodes, routes).
+
+**Controller Names Reference:**
+
+For the official list of controller names used by kube-controller-manager, see the Kubernetes source code:
+[https://github.com/kubernetes/kubernetes/blob/master/cmd/kube-controller-manager/names/controller_names.go](https://github.com/kubernetes/kubernetes/blob/master/cmd/kube-controller-manager/names/controller_names.go)
 
 ## Troubleshooting
 Common issues and their solutions:
