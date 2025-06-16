@@ -322,7 +322,7 @@ sudo kubebuilder/bin/kubectl create configmap kube-root-ca.crt --from-file=ca.cr
 #### Start kubelet:
 ```bash
 echo "Starting kubelet..."
-sudo PATH=$PATH:/opt/cni/bin:/usr/sbin kubebuilder/bin/kubelet \ 
+sudo PATH=$PATH:/opt/cni/bin:/usr/sbin kubebuilder/bin/kubelet \
     --kubeconfig=/var/lib/kubelet/kubeconfig \
     --config=/var/lib/kubelet/config.yaml \
     --root-dir=/var/lib/kubelet \
