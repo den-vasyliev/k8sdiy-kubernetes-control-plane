@@ -167,11 +167,14 @@ wget https://github.com/containerd/containerd/releases/download/v2.1.2/container
 # For AMD64:
 wget https://github.com/containerd/containerd/releases/download/v2.1.2/containerd-static-2.1.2-linux-amd64.tar.gz
 
+# Download ARM runc
+sudo curl -L "https://github.com/opencontainers/runc/releases/download/v1.2.6/runc.arm64" -o /opt/cni/bin/runc
+
 # Download AMD runc
 sudo curl -L "https://github.com/opencontainers/runc/releases/download/v1.2.6/runc.amd64" -o /opt/cni/bin/runc
 
 # Download ARM CNI plugins
-wget https://github.com/containernetworking/plugins/releases/download/v1.6.2/cni-plugins-linux-arm-v1.6.2.tgz
+wget https://github.com/containernetworking/plugins/releases/download/v1.6.2/cni-plugins-linux-arm64-v1.6.2.tgz
 
 # Download AMD CNI plugins
 wget https://github.com/containernetworking/plugins/releases/download/v1.6.2/cni-plugins-linux-amd64-v1.6.2.tgz
@@ -188,7 +191,7 @@ curl -L "https://dl.k8s.io/v1.30.0/bin/linux/amd64/kube-scheduler" -o kubebuilde
 # Extract and install components
 # ARM
 sudo tar zxf containerd-static-2.1.2-linux-arm64.tar.gz -C /opt/cni/
-sudo tar zxf cni-plugins-linux-arm-v1.6.2.tgz -C /opt/cni/bin/
+sudo tar zxf cni-plugins-linux-arm64-v1.6.2.tgz -C /opt/cni/bin/
 # AMD plugins
 sudo tar zxf containerd-static-2.1.2-linux-amd64.tar.gz -C /opt/cni/ 
 sudo tar zxf cni-plugins-linux-amd64-v1.6.2.tgz -C /opt/cni/bin/
