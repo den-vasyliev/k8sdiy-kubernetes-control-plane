@@ -187,7 +187,7 @@ curl -L "https://dl.k8s.io/v1.30.0/bin/linux/amd64/kube-scheduler" -o kubebuilde
 
 # Extract and install components
 # ARM
-sudo tar zxf containerd-static-2.1.2-linux-arm.tar.gz -C /opt/cni/ 
+sudo tar zxf containerd-static-2.1.2-linux-arm64.tar.gz -C /opt/cni/
 sudo tar zxf cni-plugins-linux-arm-v1.6.2.tgz -C /opt/cni/bin/
 # AMD plugins
 sudo tar zxf containerd-static-2.1.2-linux-amd64.tar.gz -C /opt/cni/ 
