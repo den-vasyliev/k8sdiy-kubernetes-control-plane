@@ -165,7 +165,7 @@ sudo mkdir -p /etc/cni/net.d
 wget https://github.com/containerd/containerd/releases/download/v2.1.2/containerd-static-2.1.2-linux-arm64.tar.gz
 
 # For AMD64:
-wget https://github.com/containerd/containerd/releases/download/v2.1.2/containerd-static-2.1.2-linux-amd64.tar.gz
+wget https://github.com/containerd/containerd/releases/download/v2.0.5/containerd-static-2.0.5-linux-amd64.tar.gz
 
 # Download ARM runc
 sudo curl -L "https://github.com/opencontainers/runc/releases/download/v1.2.6/runc.arm64" -o /opt/cni/bin/runc
@@ -193,7 +193,7 @@ curl -L "https://dl.k8s.io/v1.30.0/bin/linux/amd64/kube-scheduler" -o kubebuilde
 sudo tar zxf containerd-static-2.1.2-linux-arm64.tar.gz -C /opt/cni/
 sudo tar zxf cni-plugins-linux-arm64-v1.6.2.tgz -C /opt/cni/bin/
 # AMD plugins
-sudo tar zxf containerd-static-2.1.2-linux-amd64.tar.gz -C /opt/cni/ 
+sudo tar zxf containerd-static-2.0.5-linux-amd64.tar.gz -C /opt/cni/ 
 sudo tar zxf cni-plugins-linux-amd64-v1.6.2.tgz -C /opt/cni/bin/
 
 ```
@@ -233,16 +233,31 @@ sudo chmod +x kubebuilder/bin/kube-scheduler
 ```bash
 sudo mkdir -p /etc/containerd/
 cat <<EOF > config.toml
-version = 2
+version = 3
 
-[plugins]
-  [plugins."io.containerd.grpc.v1.cri"]
-    [plugins."io.containerd.grpc.v1.cri".containerd]
-      snapshotter = "overlayfs"
-      [plugins."io.containerd.grpc.v1.cri".containerd.default_runtime]
-        runtime_type = "io.containerd.runc.v2"
-        [plugins."io.containerd.grpc.v1.cri".containerd.default_runtime.options]
-          SystemdCgroup = true
+[grpc]
+  address = "/run/containerd/containerd.sock"
+
+[plugins.'io.containerd.cri.v1.runtime']
+  enable_selinux = false
+  enable_unprivileged_ports = true
+  enable_unprivileged_icmp = true
+  device_ownership_from_security_context = false
+
+[plugins.'io.containerd.cri.v1.images']
+  snapshotter = "native"
+  disable_snapshot_annotations = true
+
+[plugins.'io.containerd.cri.v1.runtime'.cni]
+  bin_dir = "/opt/cni/bin"
+  conf_dir = "/etc/cni/net.d"
+
+[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runc]
+  runtime_type = "io.containerd.runc.v2"
+
+[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runc.options]
+  SystemdCgroup = false
+
 EOF
 sudo mv config.toml /etc/containerd/config.toml
 ```
