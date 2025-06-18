@@ -63,8 +63,11 @@ curl -sS https://webi.sh/k9s | sh
 
 #### Install kubebuilder-tools:
 ```bash
+# Detect and set the system architecture
+ARCH=$(uname -m | sed -e 's/^x86_64$/amd64/' -e 's/^aarch64$/arm64/')
+
 mkdir -p ./kubebuilder/bin && \
-    curl -L https://storage.googleapis.com/kubebuilder-tools/kubebuilder-tools-1.30.0-linux-amd64.tar.gz -o kubebuilder-tools.tar.gz && \
+    curl -L https://storage.googleapis.com/kubebuilder-tools/kubebuilder-tools-1.30.0-linux-${ARCH}.tar.gz -o kubebuilder-tools.tar.gz && \
     tar -C ./kubebuilder --strip-components=1 -zvxf kubebuilder-tools.tar.gz && \
     rm kubebuilder-tools.tar.gz
 ```
@@ -72,10 +75,7 @@ mkdir -p ./kubebuilder/bin && \
 #### Download kubelet:
 ```bash
 echo "Downloading kubelet..."
-# For ARM64:
-curl -L "https://dl.k8s.io/v1.30.0/bin/linux/arm64/kubelet" -o kubebuilder/bin/kubelet
-# For AMD64:
-curl -L "https://dl.k8s.io/v1.30.0/bin/linux/amd64/kubelet" -o kubebuilder/bin/kubelet
+curl -L "https://dl.k8s.io/v1.30.0/bin/linux/${ARCH}/kubelet" -o kubebuilder/bin/kubelet
 ```
 
 #### Generate service account key pair:
@@ -110,7 +110,7 @@ HOST_IP=$(hostname -I | awk '{print $1}')
 #### Start etcd:
 ```bash
 echo "Starting etcd..."
-kubebuilder/bin/etcd \
+sudo kubebuilder/bin/etcd \
     --advertise-client-urls http://$HOST_IP:2379 \
     --listen-client-urls http://0.0.0.0:2379 \
     --data-dir ./etcd \
@@ -161,41 +161,22 @@ echo "Installing containerd..."
 sudo mkdir -p /opt/cni/bin
 sudo mkdir -p /etc/cni/net.d
 
-# For ARM64:
-wget https://github.com/containerd/containerd/releases/download/v2.1.2/containerd-static-2.1.2-linux-arm64.tar.gz
+# Download containerd
+wget https://github.com/containerd/containerd/releases/download/v2.1.2/containerd-static-2.1.2-linux-${ARCH}.tar.gz
 
-# For AMD64:
-wget https://github.com/containerd/containerd/releases/download/v2.1.2/containerd-static-2.1.2-linux-amd64.tar.gz
+# Download runc
+sudo curl -L "https://github.com/opencontainers/runc/releases/download/v1.2.6/runc.${ARCH}" -o /opt/cni/bin/runc
 
-# Download ARM runc
-sudo curl -L "https://github.com/opencontainers/runc/releases/download/v1.2.6/runc.arm64" -o /opt/cni/bin/runc
+# Download CNI plugins
+wget https://github.com/containernetworking/plugins/releases/download/v1.6.2/cni-plugins-linux-${ARCH}-v1.6.2.tgz
 
-# Download AMD runc
-sudo curl -L "https://github.com/opencontainers/runc/releases/download/v1.2.6/runc.amd64" -o /opt/cni/bin/runc
-
-# Download ARM CNI plugins
-wget https://github.com/containernetworking/plugins/releases/download/v1.6.2/cni-plugins-linux-arm64-v1.6.2.tgz
-
-# Download AMD CNI plugins
-wget https://github.com/containernetworking/plugins/releases/download/v1.6.2/cni-plugins-linux-amd64-v1.6.2.tgz
-
-
-# Download ARM kube-controller-manager and kube-scheduler
-curl -L "https://dl.k8s.io/v1.30.0/bin/linux/arm64/kube-controller-manager" -o kubebuilder/bin/kube-controller-manager
-curl -L "https://dl.k8s.io/v1.30.0/bin/linux/arm64/kube-scheduler" -o kubebuilder/bin/kube-scheduler
-
-# Download AMD kube-controller-manager and kube-scheduler
-curl -L "https://dl.k8s.io/v1.30.0/bin/linux/amd64/kube-controller-manager" -o kubebuilder/bin/kube-controller-manager
-curl -L "https://dl.k8s.io/v1.30.0/bin/linux/amd64/kube-scheduler" -o kubebuilder/bin/kube-scheduler
+# Download kube-controller-manager and kube-scheduler
+curl -L "https://dl.k8s.io/v1.30.0/bin/linux/${ARCH}/kube-controller-manager" -o kubebuilder/bin/kube-controller-manager
+curl -L "https://dl.k8s.io/v1.30.0/bin/linux/${ARCH}/kube-scheduler" -o kubebuilder/bin/kube-scheduler
 
 # Extract and install components
-# ARM
-sudo tar zxf containerd-static-2.1.2-linux-arm64.tar.gz -C /opt/cni/
-sudo tar zxf cni-plugins-linux-arm64-v1.6.2.tgz -C /opt/cni/bin/
-# AMD plugins
-sudo tar zxf containerd-static-2.1.2-linux-amd64.tar.gz -C /opt/cni/ 
-sudo tar zxf cni-plugins-linux-amd64-v1.6.2.tgz -C /opt/cni/bin/
-
+sudo tar zxf containerd-static-2.1.2-linux-${ARCH}.tar.gz -C /opt/cni/
+sudo tar zxf cni-plugins-linux-${ARCH}-v1.6.2.tgz -C /opt/cni/bin/
 ```
 
 #### Configure CNI:
