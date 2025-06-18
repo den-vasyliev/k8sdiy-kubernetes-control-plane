@@ -161,8 +161,8 @@ echo "Installing containerd..."
 sudo mkdir -p /opt/cni/bin
 sudo mkdir -p /etc/cni/net.d
 
-# For AMD64:
-wget https://github.com/containerd/containerd/releases/download/v2.0.5/containerd-static-2.0.5-linux-amd64.tar.gz
+# Download containerd
+wget https://github.com/containerd/containerd/releases/download/v2.0.5/containerd-static-2.0.5-linux-${ARCH}.tar.gz
 
 # Download ARM runc
 sudo curl -L "https://github.com/opencontainers/runc/releases/download/v1.2.6/runc.arm64" -o /opt/cni/bin/runc
