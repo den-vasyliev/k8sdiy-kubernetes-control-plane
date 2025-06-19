@@ -5,74 +5,117 @@ set -e
 
 echo "Setting up Kubernetes control plane for AMD64..."
 
-# Get host IP
-HOST_IP=$(hostname -I | awk '{print $1}')
+# Function to check if a process is running
+is_running() {
+    pgrep -f "$1" >/dev/null
+}
 
-# Create necessary directories
-sudo mkdir -p ./kubebuilder/bin
-sudo mkdir -p /opt/cni/bin
-sudo mkdir -p /etc/cni/net.d
-sudo mkdir -p /var/lib/kubelet
-sudo mkdir -p /etc/kubernetes/manifests
-sudo mkdir -p /var/log/kubernetes
-sudo mkdir -p /etc/containerd/
+# Function to check if all components are running
+check_running() {
+    is_running "etcd" && \
+    is_running "kube-apiserver" && \
+    is_running "kube-controller-manager" && \
+    is_running "kube-scheduler" && \
+    is_running "kubelet" && \
+    is_running "containerd"
+}
 
-# Download kubebuilder tools
-echo "Downloading kubebuilder tools..."
-curl -L https://storage.googleapis.com/kubebuilder-tools/kubebuilder-tools-1.30.0-linux-amd64.tar.gz -o kubebuilder-tools.tar.gz
-tar -C ./kubebuilder --strip-components=1 -zvxf kubebuilder-tools.tar.gz
-rm kubebuilder-tools.tar.gz
+# Function to kill process if running
+stop_process() {
+    if is_running "$1"; then
+        echo "Stopping $1..."
+        sudo pkill -f "$1" || true
+        while is_running "$1"; do
+            sleep 1
+        done
+    fi
+}
 
-# Download kubelet
-echo "Downloading kubelet..."
-curl -L "https://dl.k8s.io/v1.30.0/bin/linux/amd64/kubelet" -o kubebuilder/bin/kubelet
+download_components() {
+    # Create necessary directories if they don't exist
+    sudo mkdir -p ./kubebuilder/bin
+    sudo mkdir -p /etc/cni/net.d
+    sudo mkdir -p /var/lib/kubelet
+    sudo mkdir -p /etc/kubernetes/manifests
+    sudo mkdir -p /var/log/kubernetes
+    sudo mkdir -p /etc/containerd/
+    sudo mkdir -p /run/containerd
 
-# Generate service account key pair
-echo "Generating service account key pair..."
-openssl genrsa -out /tmp/sa.key 2048
-openssl rsa -in /tmp/sa.key -pubout -out /tmp/sa.pub
+    # Download kubebuilder tools if not present
+    if [ ! -f "kubebuilder/bin/etcd" ]; then
+        echo "Downloading kubebuilder tools..."
+        curl -L https://storage.googleapis.com/kubebuilder-tools/kubebuilder-tools-1.30.0-linux-amd64.tar.gz -o /tmp/kubebuilder-tools.tar.gz
+        sudo tar -C ./kubebuilder --strip-components=1 -zxf /tmp/kubebuilder-tools.tar.gz
+        rm /tmp/kubebuilder-tools.tar.gz
+        sudo chmod -R 755 ./kubebuilder/bin
+    fi
 
-# Generate token
-echo "Generating token file..."
-TOKEN="1234567890"
-echo "${TOKEN},admin,admin,system:masters" > /tmp/token.csv
+    if [ ! -f "kubebuilder/bin/kubelet" ]; then
+        echo "Downloading kubelet..."
+        sudo curl -L "https://dl.k8s.io/v1.30.0/bin/linux/amd64/kubelet" -o kubebuilder/bin/kubelet
+        sudo chmod 755 kubebuilder/bin/kubelet
+    fi
 
-# Set up kubeconfig
-echo "Setting up kubeconfig..."
-sudo kubebuilder/bin/kubectl config set-credentials test-user --token=1234567890
-sudo kubebuilder/bin/kubectl config set-cluster test-env --server=https://127.0.0.1:6443 --insecure-skip-tls-verify
-sudo kubebuilder/bin/kubectl config set-context test-context --cluster=test-env --user=test-user --namespace=default 
-sudo kubebuilder/bin/kubectl config use-context test-context
+    # Install CNI components if not present
+    if [ ! -d "/opt/cni" ]; then
+        sudo mkdir -p /opt/cni
+        
+        echo "Installing containerd..."
+        wget https://github.com/containerd/containerd/releases/download/v2.0.5/containerd-static-2.0.5-linux-amd64.tar.gz -O /tmp/containerd.tar.gz
+        sudo tar zxf /tmp/containerd.tar.gz -C /opt/cni/
+        rm /tmp/containerd.tar.gz
 
-# Download and install containerd
-echo "Installing containerd..."
-wget https://github.com/containerd/containerd/releases/download/v2.0.5/containerd-static-2.0.5-linux-amd64.tar.gz
-sudo tar zxf containerd-static-2.0.5-linux-amd64.tar.gz -C /opt/cni/
-rm containerd-static-2.0.5-linux-amd64.tar.gz
+        echo "Installing runc..."
+        sudo curl -L "https://github.com/opencontainers/runc/releases/download/v1.2.6/runc.amd64" -o /opt/cni/bin/runc
 
-# Download and install runc
-echo "Installing runc..."
-sudo curl -L "https://github.com/opencontainers/runc/releases/download/v1.2.6/runc.amd64" -o /opt/cni/bin/runc
-sudo chmod +x /opt/cni/bin/runc
+        echo "Installing CNI plugins..."
+        wget https://github.com/containernetworking/plugins/releases/download/v1.6.2/cni-plugins-linux-amd64-v1.6.2.tgz -O /tmp/cni-plugins.tgz
+        sudo tar zxf /tmp/cni-plugins.tgz -C /opt/cni/bin/
+        rm /tmp/cni-plugins.tgz
 
-# Download and install CNI plugins
-echo "Installing CNI plugins..."
-wget https://github.com/containernetworking/plugins/releases/download/v1.6.2/cni-plugins-linux-amd64-v1.6.2.tgz
-sudo tar zxf cni-plugins-linux-amd64-v1.6.2.tgz -C /opt/cni/bin/
-rm cni-plugins-linux-amd64-v1.6.2.tgz
+        # Set permissions for all CNI components
+        sudo chmod -R 755 /opt/cni
+    fi
 
-# Download kube-controller-manager and kube-scheduler
-echo "Downloading additional components..."
-curl -L "https://dl.k8s.io/v1.30.0/bin/linux/amd64/kube-controller-manager" -o kubebuilder/bin/kube-controller-manager
-curl -L "https://dl.k8s.io/v1.30.0/bin/linux/amd64/kube-scheduler" -o kubebuilder/bin/kube-scheduler
+    if [ ! -f "kubebuilder/bin/kube-controller-manager" ]; then
+        echo "Downloading additional components..."
+        sudo curl -L "https://dl.k8s.io/v1.30.0/bin/linux/amd64/kube-controller-manager" -o kubebuilder/bin/kube-controller-manager
+        sudo curl -L "https://dl.k8s.io/v1.30.0/bin/linux/amd64/kube-scheduler" -o kubebuilder/bin/kube-scheduler
+        sudo chmod 755 kubebuilder/bin/kube-controller-manager
+        sudo chmod 755 kubebuilder/bin/kube-scheduler
+    fi
+}
 
-# Set permissions
-sudo chmod +x kubebuilder/bin/kube-controller-manager
-sudo chmod +x kubebuilder/bin/kubelet 
-sudo chmod +x kubebuilder/bin/kube-scheduler
+setup_configs() {
+    # Generate certificates and tokens if they don't exist
+    if [ ! -f "/tmp/sa.key" ]; then
+        openssl genrsa -out /tmp/sa.key 2048
+        openssl rsa -in /tmp/sa.key -pubout -out /tmp/sa.pub
+    fi
 
-# Configure CNI
-cat <<EOF | sudo tee /etc/cni/net.d/10-mynet.conf
+    if [ ! -f "/tmp/token.csv" ]; then
+        TOKEN="1234567890"
+        echo "${TOKEN},admin,admin,system:masters" > /tmp/token.csv
+    fi
+
+    # Always regenerate and copy CA certificate to ensure it exists
+    echo "Generating CA certificate..."
+    openssl genrsa -out /tmp/ca.key 2048
+    openssl req -x509 -new -nodes -key /tmp/ca.key -subj "/CN=kubelet-ca" -days 365 -out /tmp/ca.crt
+    sudo mkdir -p /var/lib/kubelet/pki
+    sudo cp /tmp/ca.crt /var/lib/kubelet/ca.crt
+    sudo cp /tmp/ca.crt /var/lib/kubelet/pki/ca.crt
+
+    # Set up kubeconfig if not already configured
+    if ! sudo kubebuilder/bin/kubectl config current-context | grep -q "test-context"; then
+        sudo kubebuilder/bin/kubectl config set-credentials test-user --token=1234567890
+        sudo kubebuilder/bin/kubectl config set-cluster test-env --server=https://127.0.0.1:6443 --insecure-skip-tls-verify
+        sudo kubebuilder/bin/kubectl config set-context test-context --cluster=test-env --user=test-user --namespace=default 
+        sudo kubebuilder/bin/kubectl config use-context test-context
+    fi
+
+    # Configure CNI
+    cat <<EOF | sudo tee /etc/cni/net.d/10-mynet.conf
 {
     "cniVersion": "0.3.1",
     "name": "mynet",
@@ -90,8 +133,8 @@ cat <<EOF | sudo tee /etc/cni/net.d/10-mynet.conf
 }
 EOF
 
-# Configure containerd
-cat <<EOF | sudo tee /etc/containerd/config.toml
+    # Configure containerd
+    cat <<EOF | sudo tee /etc/containerd/config.toml
 version = 3
 
 [grpc]
@@ -118,14 +161,12 @@ version = 3
   SystemdCgroup = false
 EOF
 
-# Generate CA certificate
-echo "Generating CA certificate for kubelet..."
-openssl genrsa -out /tmp/ca.key 2048
-openssl req -x509 -new -nodes -key /tmp/ca.key -subj "/CN=kubelet-ca" -days 365 -out /tmp/ca.crt
-sudo cp /tmp/ca.crt /var/lib/kubelet/ca.crt
+    # Ensure containerd data directory exists with correct permissions
+    sudo mkdir -p /var/lib/containerd
+    sudo chmod 711 /var/lib/containerd
 
-# Configure kubelet
-cat << EOF | sudo tee /var/lib/kubelet/config.yaml
+    # Configure kubelet
+    cat << EOF | sudo tee /var/lib/kubelet/config.yaml
 apiVersion: kubelet.config.k8s.io/v1beta1
 kind: KubeletConfiguration
 authentication:
@@ -149,103 +190,164 @@ containerRuntimeEndpoint: "unix:///run/containerd/containerd.sock"
 staticPodPath: "/etc/kubernetes/manifests"
 EOF
 
-# Start etcd
-echo "Starting etcd..."
-sudo kubebuilder/bin/etcd \
-    --advertise-client-urls http://$HOST_IP:2379 \
-    --listen-client-urls http://0.0.0.0:2379 \
-    --data-dir ./etcd \
-    --listen-peer-urls http://0.0.0.0:2380 \
-    --initial-cluster default=http://$HOST_IP:2380 \
-    --initial-advertise-peer-urls http://$HOST_IP:2380 \
-    --initial-cluster-state new \
-    --initial-cluster-token test-token &
+    # Create required directories with proper permissions
+    sudo mkdir -p /var/lib/kubelet/pods
+    sudo chmod 750 /var/lib/kubelet/pods
+    sudo mkdir -p /var/lib/kubelet/plugins
+    sudo chmod 750 /var/lib/kubelet/plugins
+    sudo mkdir -p /var/lib/kubelet/plugins_registry
+    sudo chmod 750 /var/lib/kubelet/plugins_registry
 
-# Wait for etcd to be ready
-sleep 5
-curl http://127.0.0.1:2379/health
+    # Ensure proper permissions
+    sudo chmod 644 /var/lib/kubelet/ca.crt
+    sudo chmod 644 /var/lib/kubelet/config.yaml
+}
 
-# Start kube-apiserver
-echo "Starting kube-apiserver..."
-sudo kubebuilder/bin/kube-apiserver \
-    --etcd-servers=http://$HOST_IP:2379 \
-    --service-cluster-ip-range=10.0.0.0/24 \
-    --bind-address=0.0.0.0 \
-    --secure-port=6443 \
-    --advertise-address=$HOST_IP \
-    --authorization-mode=AlwaysAllow \
-    --token-auth-file=/tmp/token.csv \
-    --enable-priority-and-fairness=false \
-    --allow-privileged=true \
-    --profiling=false \
-    --storage-backend=etcd3 \
-    --storage-media-type=application/json \
-    --v=0 \
-    --service-account-issuer=https://kubernetes.default.svc.cluster.local \
-    --service-account-key-file=/tmp/sa.pub \
-    --service-account-signing-key-file=/tmp/sa.key &
+start() {
+    if check_running; then
+        echo "Kubernetes components are already running"
+        return 0
+    fi
 
-# Wait for API server to be ready
-sleep 10
-sudo kubebuilder/bin/kubectl get --raw='/readyz'
+    HOST_IP=$(hostname -I | awk '{print $1}')
+    
+    # Download components if needed
+    download_components
+    
+    # Setup configurations
+    setup_configs
 
-# Start containerd
-echo "Starting containerd..."
-export PATH=$PATH:/opt/cni/bin:kubebuilder/bin
-sudo PATH=$PATH:/opt/cni/bin:/usr/sbin /opt/cni/bin/containerd -c /etc/containerd/config.toml &
+    # Start components if not running
+    if ! is_running "etcd"; then
+        echo "Starting etcd..."
+        sudo kubebuilder/bin/etcd \
+            --advertise-client-urls http://$HOST_IP:2379 \
+            --listen-client-urls http://0.0.0.0:2379 \
+            --data-dir ./etcd \
+            --listen-peer-urls http://0.0.0.0:2380 \
+            --initial-cluster default=http://$HOST_IP:2380 \
+            --initial-advertise-peer-urls http://$HOST_IP:2380 \
+            --initial-cluster-state new \
+            --initial-cluster-token test-token &
+    fi
 
-# Start kube-scheduler
-echo "Starting kube-scheduler..."
-sudo kubebuilder/bin/kube-scheduler \
-    --kubeconfig=/root/.kube/config \
-    --leader-elect=false \
-    --v=2 \
-    --bind-address=0.0.0.0 &
+    if ! is_running "kube-apiserver"; then
+        echo "Starting kube-apiserver..."
+        sudo kubebuilder/bin/kube-apiserver \
+            --etcd-servers=http://$HOST_IP:2379 \
+            --service-cluster-ip-range=10.0.0.0/24 \
+            --bind-address=0.0.0.0 \
+            --secure-port=6443 \
+            --advertise-address=$HOST_IP \
+            --authorization-mode=AlwaysAllow \
+            --token-auth-file=/tmp/token.csv \
+            --enable-priority-and-fairness=false \
+            --allow-privileged=true \
+            --profiling=false \
+            --storage-backend=etcd3 \
+            --storage-media-type=application/json \
+            --v=0 \
+            --service-account-issuer=https://kubernetes.default.svc.cluster.local \
+            --service-account-key-file=/tmp/sa.pub \
+            --service-account-signing-key-file=/tmp/sa.key &
+    fi
 
-# Set up kubelet kubeconfig
-sudo cp /root/.kube/config /var/lib/kubelet/kubeconfig
-export KUBECONFIG=~/.kube/config
-cp /tmp/sa.pub /tmp/ca.crt
+    if ! is_running "containerd"; then
+        echo "Starting containerd..."
+        export PATH=$PATH:/opt/cni/bin:kubebuilder/bin
+        sudo PATH=$PATH:/opt/cni/bin:/usr/sbin /opt/cni/bin/containerd -c /etc/containerd/config.toml &
+    fi
 
-# Create service account and configmap
-sudo kubebuilder/bin/kubectl create sa default
-sudo kubebuilder/bin/kubectl create configmap kube-root-ca.crt --from-file=ca.crt=/tmp/ca.crt -n default
+    if ! is_running "kube-scheduler"; then
+        echo "Starting kube-scheduler..."
+        sudo kubebuilder/bin/kube-scheduler \
+            --kubeconfig=/root/.kube/config \
+            --leader-elect=false \
+            --v=2 \
+            --bind-address=0.0.0.0 &
+    fi
 
-# Start kubelet
-echo "Starting kubelet..."
-sudo PATH=$PATH:/opt/cni/bin:/usr/sbin kubebuilder/bin/kubelet \
-    --kubeconfig=/var/lib/kubelet/kubeconfig \
-    --config=/var/lib/kubelet/config.yaml \
-    --root-dir=/var/lib/kubelet \
-    --cert-dir=/var/lib/kubelet/pki \
-    --hostname-override=$(hostname) \
-    --pod-infra-container-image=registry.k8s.io/pause:3.10 \
-    --node-ip=$HOST_IP \
-    --cgroup-driver=cgroupfs \
-    --max-pods=4  \
-    --v=1 &
+    # Set up kubelet kubeconfig
+    sudo cp /root/.kube/config /var/lib/kubelet/kubeconfig
+    export KUBECONFIG=~/.kube/config
+    cp /tmp/sa.pub /tmp/ca.crt
 
-# Start kube-controller-manager
-echo "Starting kube-controller-manager..."
-sudo PATH=$PATH:/opt/cni/bin:/usr/sbin kubebuilder/bin/kube-controller-manager \
-    --kubeconfig=/var/lib/kubelet/kubeconfig \
-    --leader-elect=false \
-    --allocate-node-cidrs=true \
-    --cluster-cidr=10.0.0.0/16 \
-    --service-cluster-ip-range=10.0.0.0/24 \
-    --cluster-name=kubernetes \
-    --root-ca-file=/var/lib/kubelet/ca.crt \
-    --service-account-private-key-file=/tmp/sa.key \
-    --use-service-account-credentials=true \
-    --v=2 &
+    # Create service account and configmap if they don't exist
+    sudo kubebuilder/bin/kubectl create sa default 2>/dev/null || true
+    sudo kubebuilder/bin/kubectl create configmap kube-root-ca.crt --from-file=ca.crt=/tmp/ca.crt -n default 2>/dev/null || true
 
-# Wait for components to be ready
-sleep 10
+    if ! is_running "kubelet"; then
+        echo "Starting kubelet..."
+        sudo PATH=$PATH:/opt/cni/bin:/usr/sbin kubebuilder/bin/kubelet \
+            --kubeconfig=/var/lib/kubelet/kubeconfig \
+            --config=/var/lib/kubelet/config.yaml \
+            --root-dir=/var/lib/kubelet \
+            --cert-dir=/var/lib/kubelet/pki \
+            --hostname-override=$(hostname) \
+            --pod-infra-container-image=registry.k8s.io/pause:3.10 \
+            --node-ip=$HOST_IP \
+            --cgroup-driver=cgroupfs \
+            --max-pods=4  \
+            --v=1 &
+    fi
 
-# Verify setup
-echo "Verifying setup..."
-sudo kubebuilder/bin/kubectl get nodes
-sudo kubebuilder/bin/kubectl get all -A
-sudo kubebuilder/bin/kubectl get --raw='/readyz?verbose'
+    if ! is_running "kube-controller-manager"; then
+        echo "Starting kube-controller-manager..."
+        sudo PATH=$PATH:/opt/cni/bin:/usr/sbin kubebuilder/bin/kube-controller-manager \
+            --kubeconfig=/var/lib/kubelet/kubeconfig \
+            --leader-elect=false \
+            --allocate-node-cidrs=true \
+            --cluster-cidr=10.0.0.0/16 \
+            --service-cluster-ip-range=10.0.0.0/24 \
+            --cluster-name=kubernetes \
+            --root-ca-file=/var/lib/kubelet/ca.crt \
+            --service-account-private-key-file=/tmp/sa.key \
+            --use-service-account-credentials=true \
+            --v=2 &
+    fi
 
-echo "Setup complete! Your Kubernetes control plane is now running." 
+    echo "Waiting for components to be ready..."
+    sleep 10
+
+    echo "Verifying setup..."
+    sudo kubebuilder/bin/kubectl get nodes
+    sudo kubebuilder/bin/kubectl get all -A
+    sudo kubebuilder/bin/kubectl get componentstatuses || true
+}
+
+stop() {
+    echo "Stopping Kubernetes components..."
+    stop_process "kube-controller-manager"
+    stop_process "kubelet"
+    stop_process "kube-scheduler"
+    stop_process "kube-apiserver"
+    stop_process "containerd"
+    stop_process "etcd"
+    echo "All components stopped"
+}
+
+cleanup() {
+    stop
+    echo "Cleaning up..."
+    sudo rm -rf ./etcd
+    sudo rm -rf /var/lib/kubelet/*
+    sudo rm -rf /run/containerd/*
+    sudo rm -f /tmp/sa.key /tmp/sa.pub /tmp/token.csv /tmp/ca.key /tmp/ca.crt
+    echo "Cleanup complete"
+}
+
+case "${1:-}" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    cleanup)
+        cleanup
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|cleanup}"
+        exit 1
+        ;;
+esac 
