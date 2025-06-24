@@ -15,6 +15,7 @@ check_running() {
     is_running "etcd" && \
     is_running "kube-apiserver" && \
     is_running "kube-controller-manager" && \
+    is_running "cloud-controller-manager" && \
     is_running "kube-scheduler" && \
     is_running "kubelet" && \
     is_running "containerd"
@@ -81,8 +82,10 @@ download_components() {
         echo "Downloading additional components..."
         sudo curl -L "https://dl.k8s.io/v1.30.0/bin/linux/amd64/kube-controller-manager" -o kubebuilder/bin/kube-controller-manager
         sudo curl -L "https://dl.k8s.io/v1.30.0/bin/linux/amd64/kube-scheduler" -o kubebuilder/bin/kube-scheduler
+        sudo curl -L "https://dl.k8s.io/v1.30.0/bin/linux/amd64/cloud-controller-manager" -o kubebuilder/bin/cloud-controller-manager
         sudo chmod 755 kubebuilder/bin/kube-controller-manager
         sudo chmod 755 kubebuilder/bin/kube-scheduler
+        sudo chmod 755 kubebuilder/bin/cloud-controller-manager
     fi
 }
 
@@ -185,7 +188,7 @@ resolvConf: "/etc/resolv.conf"
 runtimeRequestTimeout: "15m"
 failSwapOn: false
 seccompDefault: true
-serverTLSBootstrap: true
+serverTLSBootstrap: false
 containerRuntimeEndpoint: "unix:///run/containerd/containerd.sock"
 staticPodPath: "/etc/kubernetes/manifests"
 EOF
@@ -201,6 +204,18 @@ EOF
     # Ensure proper permissions
     sudo chmod 644 /var/lib/kubelet/ca.crt
     sudo chmod 644 /var/lib/kubelet/config.yaml
+
+    # Generate self-signed kubelet serving certificate if not present
+    if [ ! -f "/var/lib/kubelet/pki/kubelet.crt" ] || [ ! -f "/var/lib/kubelet/pki/kubelet.key" ]; then
+        echo "Generating self-signed kubelet serving certificate..."
+        sudo openssl req -x509 -newkey rsa:2048 -nodes \
+            -keyout /var/lib/kubelet/pki/kubelet.key \
+            -out /var/lib/kubelet/pki/kubelet.crt \
+            -days 365 \
+            -subj "/CN=$(hostname)"
+        sudo chmod 600 /var/lib/kubelet/pki/kubelet.key
+        sudo chmod 644 /var/lib/kubelet/pki/kubelet.crt
+    fi
 }
 
 start() {
@@ -216,6 +231,9 @@ start() {
     
     # Setup configurations
     setup_configs
+
+    # Write static pod manifest for cloud-controller-manager
+    setup_cloud_controller_manager_static_pod
 
     # Start components if not running
     if ! is_running "etcd"; then
@@ -233,6 +251,7 @@ start() {
 
     if ! is_running "kube-apiserver"; then
         echo "Starting kube-apiserver..."
+        echo "use application/vnd.kubernetes.protobuf for better performance"
         sudo kubebuilder/bin/kube-apiserver \
             --etcd-servers=http://$HOST_IP:2379 \
             --service-cluster-ip-range=10.0.0.0/24 \
@@ -247,6 +266,7 @@ start() {
             --storage-backend=etcd3 \
             --storage-media-type=application/json \
             --v=0 \
+            --cloud-provider=external \
             --service-account-issuer=https://kubernetes.default.svc.cluster.local \
             --service-account-key-file=/tmp/sa.pub \
             --service-account-signing-key-file=/tmp/sa.key &
@@ -275,6 +295,7 @@ start() {
     # Create service account and configmap if they don't exist
     sudo kubebuilder/bin/kubectl create sa default 2>/dev/null || true
     sudo kubebuilder/bin/kubectl create configmap kube-root-ca.crt --from-file=ca.crt=/tmp/ca.crt -n default 2>/dev/null || true
+    setup_ccm_rbac
 
     if ! is_running "kubelet"; then
         echo "Starting kubelet..."
@@ -283,21 +304,27 @@ start() {
             --config=/var/lib/kubelet/config.yaml \
             --root-dir=/var/lib/kubelet \
             --cert-dir=/var/lib/kubelet/pki \
+            --tls-cert-file=/var/lib/kubelet/pki/kubelet.crt \
+            --tls-private-key-file=/var/lib/kubelet/pki/kubelet.key \
             --hostname-override=$(hostname) \
             --pod-infra-container-image=registry.k8s.io/pause:3.10 \
             --node-ip=$HOST_IP \
+            --cloud-provider=external \
             --cgroup-driver=cgroupfs \
             --max-pods=4  \
             --v=1 &
     fi
+
+    # Label the node so static pods with nodeSelector can be scheduled
+    NODE_NAME=$(hostname)
+    sudo kubebuilder/bin/kubectl label node "$NODE_NAME" node-role.kubernetes.io/master="" --overwrite || true
 
     if ! is_running "kube-controller-manager"; then
         echo "Starting kube-controller-manager..."
         sudo PATH=$PATH:/opt/cni/bin:/usr/sbin kubebuilder/bin/kube-controller-manager \
             --kubeconfig=/var/lib/kubelet/kubeconfig \
             --leader-elect=false \
-            --allocate-node-cidrs=true \
-            --cluster-cidr=10.0.0.0/16 \
+            --cloud-provider=external \
             --service-cluster-ip-range=10.0.0.0/24 \
             --cluster-name=kubernetes \
             --root-ca-file=/var/lib/kubelet/ca.crt \
@@ -313,10 +340,13 @@ start() {
     sudo kubebuilder/bin/kubectl get nodes
     sudo kubebuilder/bin/kubectl get all -A
     sudo kubebuilder/bin/kubectl get componentstatuses || true
+    sudo kubebuilder/bin/kubectl get --raw='/readyz?verbose'
 }
 
 stop() {
     echo "Stopping Kubernetes components..."
+    stop_process "cloud-controller-manager"
+    stop_process "gce_metadata_server"
     stop_process "kube-controller-manager"
     stop_process "kubelet"
     stop_process "kube-scheduler"
