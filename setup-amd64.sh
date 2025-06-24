@@ -232,9 +232,6 @@ start() {
     # Setup configurations
     setup_configs
 
-    # Write static pod manifest for cloud-controller-manager
-    setup_cloud_controller_manager_static_pod
-
     # Start components if not running
     if ! is_running "etcd"; then
         echo "Starting etcd..."
@@ -295,7 +292,7 @@ start() {
     # Create service account and configmap if they don't exist
     sudo kubebuilder/bin/kubectl create sa default 2>/dev/null || true
     sudo kubebuilder/bin/kubectl create configmap kube-root-ca.crt --from-file=ca.crt=/tmp/ca.crt -n default 2>/dev/null || true
-    setup_ccm_rbac
+
 
     if ! is_running "kubelet"; then
         echo "Starting kubelet..."
